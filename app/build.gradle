@@ -1,4 +1,107 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'jacoco'
+
+ext {
+    coverageSourceDirs = 'src/test/java'
+}
+
+jacoco {
+    toolVersion = "0.7.9"
+    reportsDir = file("$buildDir/reports")
+}
+
+task coverage(dependsOn: 'jacocoTestReport') << {
+    def reports = new File(project.buildDir, '/reports/jacoco/test/html')
+    def index = new File(reports, 'index.html').getText('UTF-8')
+    def footer = '<div class="footer">'
+    def result = new StringBuilder(index.substring(0, index.indexOf(footer)))
+
+    reports.eachDirMatch({ !new File(it).name.startsWith(".") }) { dir ->
+        def moduleIndex = new File(dir, 'index.source.html')
+        def content = moduleIndex.getText('UTF-8')
+                .replaceAll('\\.\\./\\.resources', '.resources')
+                .replaceAll('href="', "href=\"${dir.name}/")
+        result.append(content.substring(content.indexOf('<h1>'), content.indexOf(footer)))
+    }
+    result.append(index.substring(index.indexOf(footer)))
+
+    def output = new File(reports, 'index.source.html')
+
+    output.delete()
+    output << result.toString()
+    println("open $output.path")
+}
+
+task jacocoTestReport(type:JacocoReport, dependsOn: "testDebugUnitTest") {
+    group = "Reporting"
+    description = "Generate Jacoco coverage reports for Debug build"
+
+    reports {
+        xml.enabled = true
+        html.enabled = true
+    }
+
+    classDirectories = fileTree(
+            dir: "$buildDir/intermediates/classes/debug",
+            excludes: ['**/R.class',
+                       '**/R$*.class',
+                       '**/*$ViewBinder*.*',
+                       '**/*$InjectAdapter*.*',
+                       '**/*Injector*.*',
+                       '**/BuildConfig.*',
+                       '**/Manifest*.*',
+                       '**/*Test*.*',
+                       '**/*Activity*.*',
+                       '**/CiMattersApplication*.*',
+                       'android/**/*.*']
+    )
+
+    if (project.hasProperty("teamcity")) {
+        println '##teamcity[jacocoReport dataPath=\'app/build/jacoco/testDebugUnitTest.exec\' includes=\'com.vgaidarji.cimatters.*\' excludes=\'com.vgaidarji.cimatters.test.* **/*R*.* **/*Injector*.* **/*Activity*.* .*R .*CiMattersApplication .*BuildConfig .*Activity .*Test \']'
+    }
+
+    additionalSourceDirs = files(coverageSourceDirs)
+    sourceDirectories = files(coverageSourceDirs)
+    executionData = files("$buildDir/app/build/jacoco/testDebugUnitTest.exec")
+
+    // Bit hacky but fixes https://code.google.com/p/android/issues/detail?id=69174.
+    // We iterate through the compiled .class tree and rename $$ to $.
+    doFirst {
+        new File("$buildDir/intermediates/classes/").eachFileRecurse { file ->
+            if (file.name.contains('$$')) {
+                file.renameTo(file.path.replace('$$', '$'))
+            }
+        }
+    }
+
+    def excludes = [
+            '**/R.class',
+            '**/R$*.class',
+            '**/*$ViewInjector*.*',
+            '**/BuildConfig.*',
+            '**/Manifest*.*',
+            '**/*Test*.*',
+            'android/**/*.*',
+            '**/*Fragment.*',
+            '**/*Activity.*'
+    ]
+    // generated classes
+    classDirectories = fileTree(
+            dir: "$buildDir/intermediates/classes/debug",
+            excludes: excludes
+    ) + fileTree(
+            dir: "$buildDir/tmp/kotlin-classes/debug",
+            excludes: excludes
+    )
+
+    // sources
+    sourceDirectories = files([
+            android.sourceSets.main.java.srcDirs,
+            "src/main/kotlin"
+    ])
+    executionData = files("$buildDir/jacoco/testDebugUnitTest.exec")
+}
 
 android {
     compileSdkVersion 26
@@ -26,7 +129,11 @@ dependencies {
     implementation 'com.android.support:appcompat-v7:26.1.0'
     implementation 'com.android.support.constraint:constraint-layout:1.0.2'
     testImplementation 'junit:junit:4.12'
-    testCompile'org.hamcrest:hamcrest-library:1.3'
+    testImplementation'org.hamcrest:hamcrest-library:1.3'
     androidTestImplementation 'com.android.support.test:runner:1.0.1'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+}
+repositories {
+    mavenCentral()
 }
