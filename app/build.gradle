@@ -12,7 +12,6 @@ jacoco {
 }
 
 task coverage(dependsOn: 'jacocoTestReport') << {
-    def buildDir = '/var/lib/jenkins/workspace/KotlinTest'
     def reports = new File(project.buildDir, '/reports/jacoco/test/html')
     def index = new File(reports, 'index.html').getText('UTF-8')
     def footer = '<div class="footer">'
